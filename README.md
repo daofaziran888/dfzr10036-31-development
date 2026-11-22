@@ -16,7 +16,9 @@
 │   └── vite.config.ts        dev server 配置（open: false）
 ├── backend/                  FastAPI（Python） 后端
 │   ├── app/routers/resource.py  通用查询/导出/登记/动作接口
+│   ├── app/routers/block_file.py 阻塞文件候选检索/核对/派发接口
 │   ├── app/services/<key>.py    每个模块独立领域逻辑
+│   ├── app/services/block_file.py 阻塞文件候选领域逻辑
 │   ├── app/services/base.py     共享服务骨架
 │   └── app/store.py          内存数据仓库与示例数据
 ├── .gitignore
@@ -72,6 +74,21 @@ npm run dev
 | 编排调度 | `task_schedule` | 调度计划 | 计划编号、关联链路、Cron表达式 |
 | 流审计 | `stream_audit` | 审计记录 | 记录编号、数据流、操作类型 |
 | 健康报告 | `stream_health` | 健康评估 | 评估编号、数据流、健康分数 |
+
+## 阻塞文件候选（阻塞处理 → 小文件合并）
+
+落盘管道写入阻塞后，阻塞处理提供跨落盘管道的待合并数据文件检索与派发合并入口，
+候选数据存放在 `block_file` 表（文件路径、目标表、源管道、阻塞时间、清单状态、占用任务、确认人）。
+
+| 接口 | 说明 |
+| --- | --- |
+| `GET /api/blocked-files` | 按目标表、源管道、清单状态、阻塞时间区间检索候选；`sort`/`order`/`page`/`size` 排序翻页，`total` 与查询依据一致；仅纳入处于写入阻塞管道且未合并的文件 |
+| `POST /api/blocked-files/recheck` | 提交范围变动时重新核对：逐个回报可派发 / 已占用（含占用任务与确认人）/ 已合并 / 缺失 |
+| `POST /api/blocked-files/dispatch` | 把值班员确认的范围提交维护：按目标表登记合并任务并占用文件，源管道、确认人、文件清单写入任务并落流审计；已被占用的文件只回报冲突不重复取得，相同`请求编号`的重试返回既有任务不重复占用 |
+| `POST /api/compaction/{id}/accept-files` | 小文件合并以候选数据接受可执行文件，返回仍有资格 / 已被别的任务处理 / 无法受理的路径供再次筛选 |
+
+合并任务流转到`已完成`时清单内文件落账为已合并并退出候选；`合并失败`时释放本任务占用，
+文件回到待合并可重新核对派发。
 
 ## 约定
 
